@@ -1,0 +1,492 @@
+---
+title: "Statin use and brain volume alterations"
+author: "Mélissa Gentreau"
+date: "2024-06-24"
+output:
+  pdf_document:
+    latex_engine: xelatex
+---
+This code requires the packages *tidyverse*, *knitr*, *png*, *ggplot2*, *RColorBrewer*, *cowplot*, and *mediation*.       
+```{r setup, include=FALSE}
+
+library(tidyverse)
+library(knitr)
+library(png)
+library(ggplot2)
+library(RColorBrewer)
+library(cowplot)
+library(mediation)
+
+load("~/Postdoc Uppsala/Analyses/Statin and Brain Aging/Longitudinal analyses/Imaging/envir_ukbMRI.RData")
+
+```
+
+### Function used to create the result table:     
+```{r multivarlmR2, echo=TRUE}
+multivarlmR2 <- function (data, outcome, varexpo, varajust, 
+                          labelexpo = varexpo, decimal = 2) {
+  # data        dataset
+  # outcome     character vector of outcome names
+  # varexpo     character vector of exposure variable (1)
+  # varajust    character vector of covariates
+  # labelexpo   character vector of labels of the exposure variable, colnames by default
+  # decimal     number of digits after the decimal point, 2 by default
+  
+  x <- data[,c(varexpo)]
+  res <- NULL
+  
+  for (i in 1:length(outcome)) {
+    # y : variable i to explain
+    y <- outcome[i]
+    
+    ## Empty matrix which will be used as a table
+    mat_res <- matrix(NA, nrow = 0, ncol = 9)
+    colnames(mat_res) <- c("Outcome","Exposure","Beta","SE",
+                           "Lower CI", "Upper CI" ,"P value", "P.raw",
+                           "Adjusted R-squared")
+    
+    varexpo <- c(varexpo)
+    
+    data2 <- na.omit(data[, c(y, varexpo, varajust)])
+    
+    
+    # Writing the equation y ~ x1 + x2 +...+ xp
+    formule <- paste(y, "~", varexpo)
+    for (k in 1:length(varajust)) {formule <- paste(formule, "+", varajust[k])}
+    formule <- as.formula(formule)
+    
+    # Model
+    mod <- lm(formula = formule, data = data2)
+
+    # Display results of the exposure variable only
+    # i.e. the second row of coefficients and ICs (the first being the intercept)
+
+    # Coefficients and standard error
+    beta <- round(mod$coefficients, decimal)
+    se <- round(summary(mod)$coefficients[, 2], decimal)
+    CI <- round(confint(mod), decimal)
+    
+    # P-value extraction
+    pval <- summary(mod)$coefficients[, 4]
+    pvalr <- round(pval, 4)
+    pvalr[as.double(pval) < 0.0001] <- "<0.0001"
+    
+    # Adjusted R-squared value
+    adj.r.squared <- round(summary(mod)$adj.r.squared, 4)
+    
+    # If the exposure variable is a factor
+    if (is.factor(x)) {
+      
+      lev <- levels(x)
+      nlev <- nlevels(x)
+      
+      if (nlev == 2){
+        line <- c(y, 
+                   paste(varexpo, "_", lev[2], sep = ""),
+                   beta[2], se[2], 
+                   CI[2,1], CI[2,2], pvalr[2], pval[2], adj.r.squared)
+        mat_res <- rbind(mat_res, line)
+        
+      } else if (nlev > 2) {
+        line0 <- c(y, paste(varexpo, "_", lev[1], sep = ""), rep("", 6), adj.r.squared)
+        mat_res <- rbind(mat_res, line0)
+        
+        for (k in 2:nlev) {
+          line <- c(y, 
+                     paste(varexpo, "_", lev[k], sep = ""),
+                     beta[k], se[k], 
+                     CI[k,1], CI[k,2], pvalr[k], pval[k], "")
+          mat_res <- rbind(mat_res, line)
+        }
+      }
+      
+    } else if (is.numeric(x)){
+      
+      line <- c(y, varexpo, beta[2], se[2],
+                 CI[2,1], CI[2,2], pvalr[2], pval[2], adj.r.squared)
+      mat_res <- rbind(mat_res, line)
+    }
+    
+    res <- rbind(res, mat_res)
+    row.names(res) <- NULL
+    
+  }
+  
+  return(res)
+  
+}
+
+
+```
+## MAIN ANALYSES
+```{r main, echo=TRUE}
+imagsel <- c("GM_vol2", "WM_vol2", "cortical_vol2", "logWMH_vol2")
+
+# Model 1
+mmd1 <- multivarlmR2(data = as.data.frame(ukb2),
+                    outcome = c(imagsel), 
+                    varexpo = "statin0b",
+                    varajust = c("centre2","age0","sex","ethnic0b","qualif0b", 
+                                 "TDI0","APOE4","antidep2","ICV2"),
+                    decimal = 2)
+
+mmd1 <- as.data.frame(mmd1)
+mmd1$Model <- rep("I",4)
+
+# Model 2
+mmd2 <- multivarlmR2(data = as.data.frame(ukb2),
+                    outcome = c(imagsel), 
+                    varexpo = "statin0b",
+                    varajust = c("centre2","age0","sex","ethnic0b","qualif0b", 
+                                 "TDI0","APOE4","antidep2","ICV2",
+                                 "frq_alcohol0","smoking0","physact0b"),
+                    decimal = 2)
+
+mmd2 <- as.data.frame(mmd2)
+mmd2$Model <- rep("II",4)
+
+# Model 3
+mmd3 <- multivarlmR2(data = as.data.frame(ukb2),
+                    outcome = c(imagsel), 
+                    varexpo = "statin0b",
+                    varajust = c("centre2","age0","sex","ethnic0b","qualif0b", 
+                                 "TDI0","APOE4","antidep2","ICV2",
+                                 "frq_alcohol0","smoking0","physact0b",
+                                 "BMI0","SBP0","DBP0","diabetes0","CHD0","stroke0",
+                                 "headinjury0","depression0","insomn0"),
+                    decimal = 2)
+
+mmd3 <- as.data.frame(mmd3)
+mmd3$Model <- rep("III",4)
+
+res_mmd <- rbind(mmd1, mmd2, mmd3)
+res_mmd <- res_mmd %>% arrange(Outcome)
+res_mmd <- res_mmd[,-8]
+
+res_mmd
+
+```
+       
+### Model III according to statin type     
+
+```{r main statintype, echo=TRUE}
+ukb2$statintype0 <- as.character(ukb2$statin0b)
+ukb2$statintype0[ukb2$fluvastatin0 == "1"] <- "Fluvastatin"
+ukb2$statintype0[ukb2$pravastatin0 == "1"] <- "Pravastatin"
+ukb2$statintype0[ukb2$rosuvastatin0 == "1"] <- "Rosuvastatin"
+ukb2$statintype0[ukb2$atorvastatin0 == "1"] <- "Atorvastatin"
+ukb2$statintype0[ukb2$simvastatin0 == "1"] <- "Simvastatin"
+
+ukb2$statintype0 <- factor(ukb2$statintype0, 
+                           levels = c("0","Simvastatin","Atorvastatin", 
+                                      "Rosuvastatin","Pravastatin","Fluvastatin"))
+table(ukb2$statintype0)
+
+
+m.type <- multivarlmR2(data = as.data.frame(ukb2),
+                       outcome = c(imagsel), 
+                       varexpo = "statintype0",
+                       varajust = c("centre2","age0","sex","ethnic0b","qualif0b", 
+                                    "TDI0","APOE4","antidep2","ICV2",
+                                    "frq_alcohol0","smoking0","physact0b",
+                                    "BMI0","SBP0","DBP0","diabetes0","CHD0","stroke0",
+                                    "headinjury0","depression0","insomn0"),
+                       decimal = 2)
+
+m.type <- as.data.frame(m.type)
+m.type$Exposure <- rep(c("No statin","Simvastatin","Atorvastatin",
+                         "Rosuvastatin","Pravastatin","Fluvastatin"), 4)
+m.type <- m.type[,-8]
+m.type
+
+```
+      
+#### Figure: Associations between statin type and the volumes of grey matter, white matter, peripheral cortical grey matter and white matter hyperintensity. 
+```{r main statintype plot, echo=TRUE, results='hide'}
+m.type.p <- subset(m.type, m.type$Exposure != "No statin")
+colnames(m.type.p)[5:7] <- c("Lower_CI","Upper_CI","P")
+m.type.p$Beta <- as.numeric(m.type.p$Beta)
+m.type.p$Lower_CI <- as.numeric(m.type.p$Lower_CI)
+m.type.p$Upper_CI <- as.numeric(m.type.p$Upper_CI)
+m.type.p$Exposure <- factor(m.type.p$Exposure, 
+                            levels = c("Fluvastatin","Pravastatin","Rosuvastatin",
+                                       "Atorvastatin","Simvastatin"))
+
+
+p1 <- m.type.p %>% subset(m.type.p$Outcome == "GM_vol2") %>% 
+  ggplot(aes(x = Exposure , y = Beta, color = Exposure)) + 
+  geom_point(size = 0.9) +
+  geom_hline(yintercept = 0, lty = 1, lwd = 1, color = "grey90") +
+  geom_errorbar(aes(ymin = Lower_CI, ymax = Upper_CI), width=.2) +
+  scale_color_discrete(type = rev(brewer.pal(n = 5, name = "Dark2"))) +
+  xlab("") +
+  ylab(expression(Beta)) +
+  ylim(c(-20000,20000)) +
+  ggtitle("Grey matter") +
+  coord_flip() +
+  guides(fill = "none", color = "none", linetype = "none", shape = "none") + 
+  theme_minimal()
+  
+
+p2 <- m.type.p %>% subset(m.type.p$Outcome== "WM_vol2") %>% 
+  ggplot(aes(x = Exposure, y = Beta, color = Exposure)) + 
+  geom_point(size = 0.9) +
+  geom_hline(yintercept = 0, lty = 1, lwd = 1, color = "grey90") +
+  geom_errorbar(aes(ymin = Lower_CI, ymax = Upper_CI), width= 0.2) +
+  scale_color_discrete(type = rev(brewer.pal(n = 5, name = "Dark2"))) +
+  xlab("") +
+  ylab(expression(Beta)) +
+  ylim(c(-20000,20000)) +
+  ggtitle("White matter") +
+  coord_flip() +
+  guides(fill = "none", color = "none", linetype = "none", shape = "none") + 
+  theme_minimal()
+
+p3 <- m.type.p %>% subset(m.type.p$Outcome == "cortical_vol2") %>% 
+  ggplot(aes(x = Exposure, y = Beta, color = Exposure)) + 
+  geom_point(size = 0.9)+
+  geom_hline(yintercept = 0, lty = 1, lwd = 1, color = "grey90") +
+  geom_errorbar(aes(ymin = Lower_CI, ymax = Upper_CI), width=.2) +
+  scale_color_discrete(type = rev(brewer.pal(n = 5, name = "Dark2"))) +
+  xlab("") +
+  ylab(expression(Beta)) +
+  ylim(c(-20000,20000)) +
+  ggtitle("Peripheral cortical grey matter") +
+  coord_flip() +
+  guides(fill = "none", color = "none", linetype = "none", shape = "none") + 
+  theme_minimal()
+
+
+p4 <- m.type.p %>% subset(m.type.p$Outcome == "logWMH_vol2") %>% 
+  ggplot(aes(x = Exposure, y = Beta, color = Exposure)) + 
+  geom_point(size = 0.9)+
+  geom_hline(yintercept = 0, lty = 1, lwd = 1, color = "grey90") +
+  geom_errorbar(aes(ymin = Lower_CI, ymax = Upper_CI), width = .2) +
+  scale_color_discrete(type = rev(brewer.pal(n = 5, name = "Dark2"))) +
+  xlab("") +
+  ylab(expression(Beta)) +
+  ylim(c(-1,1)) +
+  ggtitle("White matter hyperintensities") +
+  coord_flip() +
+  guides(fill = "none", color = "none", linetype = "none", shape = "none") + 
+  theme_minimal()
+
+# plot_grid(p1, p2, p3, p4, ncol = 1)
+
+
+```
+     
+## MEDIATION ANALYSIS     
+### Statin, total cholesterol, and grey matter
+```{r med GM, echo=TRUE}
+GM <- lm(GM_vol2 ~ statin0b + chol0 + centre2 + age0 + sex + ethnic0b + qualif0b + 
+           TDI0 + APOE4 + antidep2 + ICV2 + frq_alcohol0 + smoking0 + physact0b + 
+           BMI0 + SBP0 + DBP0 + diabetes0 + CHD0 + stroke0 + headinjury0 + 
+           depression0 + insomn0, 
+         data = ukb2)
+
+GM.med1 <- lm(chol0 ~ statin0b + centre2 + age0 + sex + ethnic0b + qualif0b + 
+           TDI0 + APOE4 + antidep2 + ICV2 + frq_alcohol0 + smoking0 + physact0b + 
+             BMI0 + SBP0 + DBP0 + diabetes0 + CHD0 + stroke0 + headinjury0 + 
+             depression0 + insomn0,
+              data = ukb2)
+
+
+GM.chol <- mediate(GM.med1, GM, treat = "statin0b", mediator = "chol0", 
+                      robustSE = T, sims = 1000)
+
+summary(GM.chol)
+```
+
+### Statin, total cholesterol, and white matter
+```{r med WM, echo=TRUE}
+WM <- lm(WM_vol2 ~ statin0b + chol0 + centre2 + age0 + sex + ethnic0b + qualif0b + 
+           TDI0 + APOE4 + antidep2 + ICV2 + frq_alcohol0 + smoking0 + physact0b + 
+           BMI0 + SBP0 + DBP0 + diabetes0 + CHD0 + stroke0 + headinjury0 + 
+           depression0 + insomn0, 
+         data = ukb2)
+
+WM.med1 <- lm(chol0 ~ statin0b + centre2 + age0 + sex + ethnic0b + qualif0b +
+                TDI0 + APOE4 + antidep2 + ICV2 + frq_alcohol0 + smoking0 + physact0b +
+                BMI0 + SBP0 + DBP0 + diabetes0 + CHD0 + stroke0 + headinjury0 + 
+                depression0 + insomn0,
+              data = ukb2)
+
+
+WM.chol <- mediate(WM.med1, WM, treat = "statin0b", mediator = "chol0", 
+                   robustSE = T, sims = 1000)
+summary(WM.chol)
+```
+
+### Statin, total cholesterol, and peripheral cortical grey matter
+```{r med pcGM, echo=TRUE}
+cortical <- lm(cortical_vol2 ~ statin0b + chol0 + centre2 + age0 + sex + ethnic0b + 
+                 qualif0b + TDI0 + APOE4 + antidep2 + ICV2 + frq_alcohol0 + smoking0 + 
+                 physact0b + BMI0 + SBP0 + DBP0 + diabetes0 + CHD0 + stroke0 + 
+                 headinjury0 + depression0 + insomn0, 
+          data = ukb2)
+
+cortical.med1 <- lm(chol0 ~ statin0b + centre2 + age0 + sex + ethnic0b + 
+                 qualif0b + TDI0 + APOE4 + antidep2 + ICV2 + frq_alcohol0 + smoking0 + 
+                 physact0b + BMI0 + SBP0 + DBP0 + diabetes0 + CHD0 + stroke0 + 
+                 headinjury0 + depression0 + insomn0,
+               data = subset(ukb2, is.na(ukb2$cortical_vol2) == F))
+
+
+cortical.chol <- mediate(cortical.med1, cortical, treat = "statin0b", mediator = "chol0", 
+                    robustSE = T, sims = 1000)
+summary(cortical.chol)
+```
+
+### Statin, total cholesterol, and WMH
+```{r med WMH, echo=TRUE}
+WMH <- lm(logWMH_vol2 ~ statin0b + chol0 + centre2 + age0 + sex + ethnic0b + qualif0b + 
+            TDI0 + APOE4 + antidep2 + ICV2 + frq_alcohol0 + smoking0 + physact0b + 
+            BMI0 + SBP0 + DBP0 + diabetes0 + CHD0 + stroke0 + headinjury0 + 
+            depression0 + insomn0, 
+          data = ukb2)
+
+WMH.med1 <- lm(chol0 ~ statin0b + centre2 + age0 + sex + ethnic0b + qualif0b +
+                 TDI0 + APOE4 + antidep2 + ICV2 + frq_alcohol0 + smoking0 + physact0b + 
+                 BMI0 + SBP0 + DBP0 + diabetes0 + CHD0 + stroke0 + headinjury0 + 
+                 depression0 + insomn0,
+                data = subset(ukb2, is.na(ukb2$logWMH_vol2) == F))
+
+
+WMH.chol <- mediate(WMH.med1, WMH, treat = "statin0b", mediator = "chol0", 
+                          robustSE = T, sims = 1000)
+summary(WMH.chol)
+
+```
+      
+## SECONDARY ANALYSIS      
+```{r subreg, echo=TRUE}
+# Cortical structures with FAST and sub-cortical structures with FIRST
+imag <- colnames(ukb2)[c(337:360,362:371,373:380,382:388,390:392,394:396)]
+# length(imag)
+# 55 imaging variables
+
+
+# Model 3
+mod3 <- multivarlmR2(data = as.data.frame(ukb2),
+                    outcome = imag, 
+                    varexpo = "statin0b",
+                    varajust = c("centre2","age0","sex","ethnic0b","qualif0b", 
+                                    "TDI0","APOE4","antidep2","ICV2",
+                                    "frq_alcohol0","smoking0","physact0b",
+                                    "BMI0","SBP0","DBP0","diabetes0","CHD0","stroke0",
+                                    "headinjury0","depression0","insomn0"),
+                    decimal = 2)
+
+
+mod3 <- as.data.frame(mod3)
+mod3$P.adjust <- p.adjust(mod3$P.raw, method = "fdr")
+mod3 <- mod3[,c("Outcome","Beta","Lower CI","Upper CI",
+                "P value","P.adjust","Adjusted R-squared")]
+
+mod3
+
+```
+      
+## SENSITIVITY ANALYSIS
+### Never users versus long-term statin users        
+```{r statinlongterm, echo=TRUE}
+## Create a variable for long-term statin users
+
+ukb2$statin_t02 <- rep(NA, dim(ukb2)[1])
+# 0: never used statin
+ukb2$statin_t02[ukb2$statin0b == 0 & ukb2$statin2b == 0] <- 0 
+# 1: started using statin at the imaging visit (removed)  
+ukb2$statin_t02[ukb2$statin0b == 0 & ukb2$statin2b == 1] <- 1
+# 2: reported using statin at recruitment but not at the imaging visit (removed)
+ukb2$statin_t02[ukb2$statin0b == 1 & ukb2$statin2b == 0] <- 2
+# 3: continuously used statin between recruitment and imaging visit
+ukb2$statin_t02[ukb2$statin0b == 1 & ukb2$statin2b == 1] <- 3
+
+ukb2$statin_t02 <- as.factor(ukb2$statin_t02)
+table(ukb2$statin_t02)
+
+ukb3 <- ukb2 %>% filter(ukb2$statin_t02 == "0" | ukb2$statin_t02 == "3")
+table(ukb3$statin0b)
+
+```
+```{r sensitivity  longt, echo=TRUE}
+
+# Model 1
+m.longt1 <- multivarlmR2(data = as.data.frame(ukb3),
+                         outcome = imagsel, 
+                         varexpo = "statin0b",
+                         varajust = c("centre2","age0","sex","ethnic0b","qualif0b", 
+                                      "TDI0","APOE4","antidep2","ICV2"),
+                         decimal = 2)
+
+m.longt1 <- as.data.frame(m.longt1)
+m.longt1$Model <- rep("I",4)
+
+# Model 2
+m.longt2 <- multivarlmR2(data = as.data.frame(ukb3),
+                         outcome = imagsel, 
+                         varexpo = "statin0b",
+                         varajust = c("centre2","age0","sex","ethnic0b","qualif0b", 
+                                      "TDI0","APOE4","antidep2","ICV2",
+                                      "frq_alcohol0","smoking0","physact0b"),
+                         decimal = 2)
+
+m.longt2 <- as.data.frame(m.longt2)
+m.longt2$Model <- rep("II",4)
+
+# Model 3
+m.longt3 <- multivarlmR2(data = as.data.frame(ukb3),
+                         outcome = imagsel, 
+                         varexpo = "statin0b",
+                         varajust = c("centre2","age0","sex","ethnic0b","qualif0b", 
+                                      "TDI0","APOE4","antidep2","ICV2",
+                                      "frq_alcohol0","smoking0","physact0b","BMI0",
+                                      "SBP0","DBP0","diabetes0","CHD0","stroke0",
+                                      "headinjury0","depression0","insomn0"),
+                         decimal = 2)
+
+m.longt3 <- as.data.frame(m.longt3)
+m.longt3$Model <- rep("III",4)
+
+m.longt <- rbind(m.longt1, m.longt2, m.longt3)
+m.longt <- m.longt %>% arrange(Outcome)
+m.longt <- m.longt[,-8]
+
+m.longt
+```
+
+### Replace self-reported medical history variables with variables based on ICD10 diagnoses
+```{r sensitivity data, echo=FALSE, include=FALSE, eval=TRUE}
+
+icdv <- read_csv("~/Postdoc Uppsala/UK Biobank/Generated variables/ukb30172_676881_ICD10_PREV.csv")
+
+ukb2 <- ukb2 %>% inner_join(icdv, by = "eid_30172") 
+
+ukb2  <- ukb2 %>% mutate_at(c(408:413), factor)
+colnames(ukb2)[c(409,410,413)] <- c("CHD_ICD0", "stroke_ICD0", "sleepdis_ICD0")
+
+```
+
+
+```{r sensitivity  ICD10, echo=TRUE}
+
+mod3ICD <- multivarlmR2(data = as.data.frame(ukb2),
+                        outcome = imagsel, 
+                        varexpo = "statin0b",
+                        varajust = c("centre2","age0","sex","ethnic0b","qualif0b", 
+                                     "TDI0","APOE4","antidep2","ICV2",
+                                     "frq_alcohol0","smoking0","physact0b","BMI0",
+                                     "SBP0","DBP0","diabetesICD0","CHD_ICD0",
+                                     "stroke_ICD0","headinjuryICD0","depressionICD0"),
+                    decimal = 2)
+
+mod3ICD <- as.data.frame(mod3ICD)
+mod3ICD$Model <- rep("III",4)
+mod3ICD <- mod3ICD[,-8]
+
+mod3ICD
+
+```
+
+
