@@ -1,0 +1,35 @@
+# History files
+.Rhistory
+.Rapp.history
+
+# Session Data
+.RData
+.RDataTmp
+
+# User-specific files
+.Ruserdata
+
+# RStudio settings
+.Rproj.user/
+*.Rproj
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+
+# Knitted outputs
+*.html
+*.pdf
+*.docx
+
+# Data files
+*.csv
+*.tsv
+*.rds
+*.RData
+*.sav
+*.dta
+
+# Logs
+*.log
